@@ -10,6 +10,7 @@ import Bills from './pages/Bills';
 import Invoices from './pages/Invoices';
 import Repair from './pages/Repair';
 import RepairRecords from './pages/RepairRecords';
+import RepairDetail from './pages/RepairDetail';
 import Messages from './pages/Messages';
 import Settings from './pages/Settings';
 import Profile from './pages/Profile';
@@ -29,8 +30,9 @@ function App() {
         <Route path="/bills" element={<Bills />} />
         <Route path="/invoices" element={<Invoices />} />
         <Route path="/repair" element={<Repair />} />
-        <Route path="/repair-records" element={<RepairRecords />} />
-        <Route path="/messages" element={<Messages />} />
+          <Route path="/repair-records" element={<RepairRecords />} />
+          <Route path="/repair-detail/:id?" element={<RepairDetail />} />
+          <Route path="/messages" element={<Messages />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
       </Routes>

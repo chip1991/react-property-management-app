@@ -46,7 +46,11 @@ export default function RepairRecords() {
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {mockRecords.map((record) => (
-          <div key={record.id} className="bg-white rounded-xl shadow-sm p-4 cursor-pointer hover:shadow-md transition-shadow">
+          <div 
+            key={record.id} 
+            className="bg-white rounded-xl shadow-sm p-4 cursor-pointer hover:shadow-md transition-shadow active:scale-[0.98]"
+            onClick={() => navigate(`/repair-detail/${record.id}`)}
+          >
             <div className="flex justify-between items-start mb-3">
               <div className="flex items-center">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${

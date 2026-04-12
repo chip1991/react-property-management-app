@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #2563eb;
+  --color-primary-dark: #1d4ed8;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #111827; 
+  min-height: 100vh;
+}
+
+/* ChatGPT Style High-Fidelity Gooey Animations */
+
+/* 流体云朵的基础扭曲变形 */
+@keyframes orb-morph {
+  0% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+  50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; }
+  100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+}
+
+/* 流体云朵的顺时针旋转轨道 */
+@keyframes orbit {
+  0% { transform: rotate(0deg) translateX(25px) rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) translateX(35px) rotate(-180deg) scale(1.1); }
+  100% { transform: rotate(360deg) translateX(25px) rotate(-360deg) scale(1); }
+}
+
+/* 流体云朵的逆时针旋转轨道 */
+@keyframes orbit-reverse {
+  0% { transform: rotate(360deg) translateX(35px) rotate(360deg) scale(1); }
+  50% { transform: rotate(180deg) translateX(25px) rotate(180deg) scale(1.2); }
+  100% { transform: rotate(0deg) translateX(35px) rotate(0deg) scale(1); }
+}
+
+/* 状态 1：大圆圈的轻微呼吸效果（聆听中） */
+@keyframes breathe-circle {
+  0% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.9; }
+}
+
+/* 状态 1：用户说话时的小点脉冲 (宽度不变，高度变为圆柱形/胶囊形，降低拉伸高度为原来的一半左右) */
+@keyframes spectrum-wave-small {
+  0% { height: 8px; }
+  50% { height: 14px; }
+  100% { height: 8px; }
+}
+
+/* 状态 3：AI 说话时的大点脉冲 (宽度不变，高度变为圆柱形/胶囊形) */
+@keyframes spectrum-wave-large {
+  0% { height: 56px; }
+  50% { height: 112px; }
+  100% { height: 56px; }
+}
+
+.animate-orb-morph {
+  animation: orb-morph 6s ease-in-out infinite;
+}
+
+.animate-orbit {
+  animation: orbit 5s linear infinite;
+}
+
+.animate-orbit-reverse {
+  animation: orbit-reverse 6s linear infinite;
+}
+
+.animate-breathe-circle {
+  animation: breathe-circle 3s ease-in-out infinite;
+}
+
+.animate-spectrum-wave-small {
+  animation: spectrum-wave-small 0.8s ease-in-out infinite;
+}
+
+.animate-spectrum-wave-large {
+  animation: spectrum-wave-large 0.8s ease-in-out infinite;
+}

@@ -1,0 +1,14 @@
+# Tasks
+- [x] Task 1: 准备并集成音频资源
+  - [x] SubTask 1.1: 生成或获取一段内容为“你好，我是你的智能助手，你可以对我说‘我家停水了’，我就可以帮你快捷提交工单了”的 mp3 音频文件，并放置在 `public/welcome.mp3`。
+- [x] Task 2: 建立音频状态管理
+  - [x] SubTask 2.1: 创建 `src/store/audioStore.ts`，使用 Zustand 管理全局音频实例、播放状态（isPlaying）以及是否已播放过（hasPlayed）的标记（同步至 sessionStorage）。
+- [x] Task 3: 改造底部导航栏点击逻辑
+  - [x] SubTask 3.1: 在 `src/layouts/AppLayout.tsx` 的 AI 按钮上绑定点击事件，当用户点击时，调用 audioStore 触发音频播放（若本会话尚未播放）。
+- [x] Task 4: 重构 AI 页面交互与动画联动
+  - [x] SubTask 4.1: 在 `src/pages/AI.tsx` 中监听 audioStore 的播放状态，当正在播放语音时，将界面动画状态切换为“回答中/说话中”（复用思考中或倾听中的动效并微调颜色/文字）。
+  - [x] SubTask 4.2: 在 `src/pages/AI.tsx` 增加组件卸载（unmount）时的逻辑，确保离开页面时音频停止播放。
+  - [x] SubTask 4.3: 增加自动播放失败时的兜底 UI 按钮，允许用户手动触发欢迎语音。
+- [x] Task 5: 验证与测试
+  - [x] SubTask 5.1: 运行 `npm run build` 确保没有类型或编译错误。
+  - [x] SubTask 5.2: 启动本地服务验证点击进入 AI 页面的语音播放、离开停止以及会话缓存逻辑是否符合预期。

@@ -1,10 +1,13 @@
-import { useState } from 'react';
-import { ChevronLeft, Camera, Wrench, CheckCircle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, Camera, Wrench, CheckCircle, Mic } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Repair() {
   const navigate = useNavigate();
   const [submitted, setSubmitted] = useState(false);
+  const [description, setDescription] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -12,6 +15,55 @@ export default function Repair() {
     setTimeout(() => {
       navigate(-1);
     }, 2000);
+  };
+
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'zh-CN';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onresult = (event: any) => {
+      const text = event.results?.[0]?.[0]?.transcript;
+      if (text) {
+        setDescription((prev) => (prev ? `${prev}\n${text}` : text));
+      }
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      recognition.stop();
+      recognitionRef.current = null;
+    };
+  }, []);
+
+  const handleVoiceInput = () => {
+    if (recognitionRef.current) {
+      try {
+        setIsListening(true);
+        recognitionRef.current.start();
+      } catch {
+        setIsListening(false);
+      }
+      return;
+    }
+
+    const text = prompt('当前浏览器不支持语音识别，请输入问题描述：');
+    if (text) {
+      setDescription((prev) => (prev ? `${prev}\n${text}` : text));
+    }
   };
 
   if (submitted) {
@@ -57,10 +109,22 @@ export default function Repair() {
           </div>
 
           <div className="bg-white rounded-xl p-4 shadow-sm">
-            <label className="block text-sm font-medium text-gray-700 mb-2">问题描述</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">问题描述</label>
+              <button
+                type="button"
+                onClick={handleVoiceInput}
+                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+              >
+                <Mic size={16} />
+                {isListening ? '识别中…' : '语音输入'}
+              </button>
+            </div>
             <textarea
               className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors min-h-[120px]"
               placeholder="请详细描述您遇到的问题，以便维修人员更好了解情况..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
               required
             ></textarea>
           </div>

@@ -1,0 +1,3 @@
+- [x] `src/pages/PrivacyPolicy.tsx` 文件已创建并包含基本内容。
+- [x] `/privacy-policy` 路由已在 `App.tsx` 中正确注册。
+- [x] 在 `Settings.tsx` 中点击“隐私与安全”能够在新窗口（`_blank`）中打开协议页面。

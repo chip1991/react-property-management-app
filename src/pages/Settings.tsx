@@ -47,7 +47,10 @@ export default function Settings() {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <button className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-50">
+          <button 
+            onClick={() => window.open('/privacy-policy', '_blank')}
+            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors border-b border-gray-50"
+          >
             <div className="flex items-center">
               <Shield size={20} className="text-green-500 mr-3" />
               <span className="font-medium text-gray-800">隐私与安全</span>

@@ -13,6 +13,7 @@ import RepairRecords from './pages/RepairRecords';
 import Messages from './pages/Messages';
 import Settings from './pages/Settings';
 import Profile from './pages/Profile';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 import AIOperator from './components/AIOperator';
 
 function App() {
@@ -34,6 +35,7 @@ function App() {
         <Route path="/messages" element={<Messages />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       </Routes>
       <AIOperator />
     </Router>

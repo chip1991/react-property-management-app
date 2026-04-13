@@ -4,9 +4,9 @@ import { Pause, Square, MessageSquare } from 'lucide-react';
 import { useAiStore } from '../store/aiStore';
 
 type SpeechRecognitionAlternativeLike = { transcript: string };
-type SpeechRecognitionResultLike = ArrayLike<SpeechRecognitionAlternativeLike>;
+type SpeechRecognitionResultLike = ArrayLike<SpeechRecognitionAlternativeLike> & { isFinal?: boolean };
 type SpeechRecognitionResultsLike = ArrayLike<SpeechRecognitionResultLike>;
-type SpeechRecognitionEventLike = { results?: SpeechRecognitionResultsLike };
+type SpeechRecognitionEventLike = { results?: SpeechRecognitionResultsLike; resultIndex?: number };
 type SpeechRecognitionErrorEventLike = { error?: string };
 
 type SpeechRecognitionLike = {
@@ -29,6 +29,37 @@ export default function AI() {
   
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const silenceTimerRef = useRef<number | null>(null);
+  const lastResultAtRef = useRef<number | null>(null);
+  const finalTranscriptRef = useRef('');
+  const interimTranscriptRef = useRef('');
+  const lastFinalIndexRef = useRef(0);
+  const stoppingForSilenceRef = useRef(false);
+
+  const aiStateRef = useRef(aiState);
+  useEffect(() => {
+    aiStateRef.current = aiState;
+  }, [aiState]);
+
+  const getSessionTranscript = useCallback(() => {
+    return `${finalTranscriptRef.current}${interimTranscriptRef.current}`.trim();
+  }, []);
+
+  const resetSessionTranscript = useCallback(() => {
+    finalTranscriptRef.current = '';
+    interimTranscriptRef.current = '';
+    lastFinalIndexRef.current = 0;
+    lastResultAtRef.current = null;
+    stoppingForSilenceRef.current = false;
+  }, []);
+
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current != null) {
+      window.clearInterval(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  }, []);
 
   const speakReply = useCallback(
     (text: string, intent: string) => {
@@ -57,6 +88,27 @@ export default function AI() {
     },
     [startOperation]
   );
+
+  const startSilenceTimer = useCallback(() => {
+    clearSilenceTimer();
+    silenceTimerRef.current = window.setInterval(() => {
+      if (aiStateRef.current !== 'userSpeaking') return;
+      if (!lastResultAtRef.current) return;
+      const silenceMs = Date.now() - lastResultAtRef.current;
+      if (silenceMs < 3000) return;
+      
+      const text = getSessionTranscript();
+      if (!text) return;
+      if (!recognitionRef.current) return;
+
+      stoppingForSilenceRef.current = true;
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+    }, 200);
+  }, [clearSilenceTimer, getSessionTranscript]);
 
   const handleUserInput = useCallback(
     async (text: string) => {
@@ -113,29 +165,75 @@ export default function AI() {
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.lang = 'zh-CN';
-      recognition.continuous = false;
-      recognition.interimResults = false;
+      recognition.continuous = true;
+      recognition.interimResults = true;
 
       recognition.onresult = (event: SpeechRecognitionEventLike) => {
-        const text = event.results?.[0]?.[0]?.transcript;
-        if (text) {
-          setUserTranscript(text);
-          handleUserInput(text);
+        const results = event.results;
+        if (!results || results.length === 0) return;
+
+        lastResultAtRef.current = Date.now();
+        startSilenceTimer();
+
+        let currentInterim = '';
+        for (let i = event.resultIndex ?? 0; i < results.length; i += 1) {
+          const result = results[i];
+          if (!result) continue;
+          const transcript = result[0]?.transcript || '';
+
+          if (result.isFinal) {
+            if (i >= lastFinalIndexRef.current) {
+              finalTranscriptRef.current += transcript;
+              lastFinalIndexRef.current = i + 1;
+            }
+          } else {
+            currentInterim += transcript;
+          }
         }
+        interimTranscriptRef.current = currentInterim;
+        
+        setUserTranscript(getSessionTranscript());
       };
 
       recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
         console.error('Speech recognition error', event.error);
+        clearSilenceTimer();
       };
       
       recognition.onend = () => {
-        // Automatically handled by state changes
+        clearSilenceTimer();
+        const text = getSessionTranscript();
+
+        const shouldCommit = text && stoppingForSilenceRef.current;
+
+        if (shouldCommit) {
+          handleUserInput(text);
+          resetSessionTranscript();
+        }
+
+        const shouldRestart = aiStateRef.current === 'userSpeaking' && !stoppingForSilenceRef.current;
+
+        if (shouldRestart) {
+          // 如果是因为浏览器意外中断（比如超时）而重启，不提交给 AI，而是把当前积累的临时文本固化到 final 中，
+          // 并清空 interim 和 index，让下一次会话的结果接着往后拼，不会丢失前半句话。
+          finalTranscriptRef.current = getSessionTranscript();
+          interimTranscriptRef.current = '';
+          lastFinalIndexRef.current = 0;
+          try {
+            recognition.start();
+          } catch (err) {
+            void err;
+          }
+        } else if (!shouldCommit) {
+           resetSessionTranscript();
+        }
       };
 
       recognitionRef.current = recognition;
     }
 
     return () => {
+      clearSilenceTimer();
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
@@ -147,7 +245,7 @@ export default function AI() {
         window.speechSynthesis.cancel();
       }
     };
-  }, [handleUserInput]);
+  }, [clearSilenceTimer, getSessionTranscript, handleUserInput, resetSessionTranscript, startSilenceTimer]);
 
   useEffect(() => {
     if (aiState === 'userSpeaking') {

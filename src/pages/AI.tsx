@@ -13,6 +13,7 @@ declare global {
 export default function AI() {
   const { startOperation } = useAiStore();
   const [aiState, setAiState] = useState<'userSpeaking' | 'aiThinking' | 'aiSpeaking'>('userSpeaking');
+  const [userTranscript, setUserTranscript] = useState('');
   
   const recognitionRef = useRef<any>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -28,6 +29,7 @@ export default function AI() {
       recognition.onresult = (event: any) => {
         const text = event.results[0][0].transcript;
         if (text) {
+          setUserTranscript(text);
           handleUserInput(text);
         }
       };
@@ -72,6 +74,7 @@ export default function AI() {
   }, [aiState]);
 
   const handleUserInput = async (text: string) => {
+    setUserTranscript(text);
     setAiState('aiThinking');
     try {
       const apiUrl = import.meta.env.VITE_QWEN_API_URL || 'https://integrate.api.nvidia.com/v1/chat/completions';
@@ -149,6 +152,7 @@ export default function AI() {
   const handleMockInput = () => {
     const text = prompt('请输入模拟语音文本：');
     if (text) {
+      setUserTranscript(text);
       handleUserInput(text);
     }
   };
@@ -307,7 +311,14 @@ export default function AI() {
       </div>
 
       {/* 底部按钮区 (仅保留退出/关闭) */}
-      <div className="relative w-full h-20 mt-4 px-6 flex items-center justify-center gap-4">
+      <div className="relative w-full mt-4 px-6 flex flex-col items-center justify-center gap-3">
+        {userTranscript && (
+          <div className="w-full max-w-[320px]">
+            <div className="w-full rounded-xl bg-white/10 px-4 py-2 text-center">
+              <p className="text-xs text-gray-300 truncate">你说：{userTranscript}</p>
+            </div>
+          </div>
+        )}
         {/* 模拟输入按钮，用于不支持语音或不想说话时测试 */}
         <button
           onClick={handleMockInput}

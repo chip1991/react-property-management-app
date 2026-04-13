@@ -5,7 +5,7 @@ import { useAudioStore } from '../store/audioStore';
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { play, stop, hasPlayed } = useAudioStore();
+  const { play, stop } = useAudioStore();
 
   const handleAIMicClick = () => {
     // 如果当前在 AI 页面，点击红色 X 则退出到首页并停止音频
@@ -15,9 +15,7 @@ export default function AppLayout() {
     } else {
       // 否则进入 AI 页面，并触发播放
       navigate('/ai');
-      if (!hasPlayed) {
-        play();
-      }
+      play();
     }
   };
 

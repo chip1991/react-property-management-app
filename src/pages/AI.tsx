@@ -11,8 +11,8 @@ export default function AI() {
 
   // 为了演示全流程，模拟从用户说话 -> 思考 -> AI说话 的状态流转
   useEffect(() => {
-    let timer1: NodeJS.Timeout;
-    let timer2: NodeJS.Timeout;
+    let timer1: ReturnType<typeof setTimeout>;
+    let timer2: ReturnType<typeof setTimeout>;
 
     if (aiState === 'userSpeaking') {
       // 模拟用户说话 3 秒后，进入 AI 思考状态

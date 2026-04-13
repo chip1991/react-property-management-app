@@ -1,60 +1,153 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Pause, Square } from 'lucide-react';
-import { useAudioStore } from '../store/audioStore';
+import { Pause, Square, MessageSquare } from 'lucide-react';
+import { useAiStore } from '../store/aiStore';
+
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
 
 export default function AI() {
-  const { isPlaying, stop, play } = useAudioStore();
-  
-  // 移除 idle，默认直接进入 userSpeaking (正在聆听) 状态
+  const { startOperation } = useAiStore();
   const [aiState, setAiState] = useState<'userSpeaking' | 'aiThinking' | 'aiSpeaking'>('userSpeaking');
+  
+  const recognitionRef = useRef<any>(null);
+  const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  // 为了演示全流程，模拟从用户说话 -> 思考 -> AI说话 的状态流转
   useEffect(() => {
-    let timer1: ReturnType<typeof setTimeout>;
-    let timer2: ReturnType<typeof setTimeout>;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'zh-CN';
+      recognition.continuous = false;
+      recognition.interimResults = false;
 
+      recognition.onresult = (event: any) => {
+        const text = event.results[0][0].transcript;
+        if (text) {
+          handleUserInput(text);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error', event.error);
+      };
+      
+      recognition.onend = () => {
+        // Automatically handled by state changes
+      };
+
+      recognitionRef.current = recognition;
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (aiState === 'userSpeaking') {
-      // 模拟用户说话 3 秒后，进入 AI 思考状态
-      timer1 = setTimeout(() => {
-        setAiState('aiThinking');
-      }, 3000);
-    } else if (aiState === 'aiThinking') {
-      // 模拟 AI 思考 2.5 秒后，进入 AI 说话状态并播放音频
-      timer2 = setTimeout(() => {
-        setAiState('aiSpeaking');
-        play();
-      }, 2500);
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch (e) {
+          // Already started
+        }
+      }
+    } else {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
     }
+  }, [aiState]);
 
-    return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-    };
-  }, [aiState, play]);
+  const handleUserInput = async (text: string) => {
+    setAiState('aiThinking');
+    try {
+      const response = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_QWEN_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'qwen-plus',
+          messages: [
+            {
+              role: 'system',
+              content: '你是一个智能助手。请根据用户的输入，返回JSON格式。包含"reply"(确认回复的话)和"intent"(动作标识，如"repair", "navigate"等，如果没有特殊动作则为"none")。仅返回JSON，直接返回纯JSON字符串。'
+            },
+            {
+              role: 'user',
+              content: text
+            }
+          ],
+          response_format: { type: 'json_object' }
+        })
+      });
 
-  // 与实际音频播放状态联动
-  useEffect(() => {
-    if (isPlaying && aiState !== 'aiSpeaking') {
-      setAiState('aiSpeaking');
-    } else if (!isPlaying && aiState === 'aiSpeaking') {
-      // 播放结束后恢复到聆听状态
-      setAiState('userSpeaking');
+      const data = await response.json();
+      const content = data.choices[0].message.content;
+      // Handle potential markdown formatting from some models
+      const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim();
+      const parsed = JSON.parse(jsonStr);
+      
+      speakReply(parsed.reply, parsed.intent);
+    } catch (error) {
+      console.error('API Error:', error);
+      speakReply('抱歉，我遇到了一些问题。', 'error');
     }
-  }, [isPlaying, aiState]);
+  };
 
-  useEffect(() => {
-    return () => {
-      stop();
-    };
-  }, [stop]);
+  const speakReply = (text: string, intent: string) => {
+    setAiState('aiSpeaking');
+    
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'zh-CN';
+      utterance.onend = () => {
+        setAiState('userSpeaking');
+        if (intent && intent !== 'none' && intent !== 'error') {
+          startOperation(intent);
+        }
+      };
+      synthesisRef.current = utterance;
+      window.speechSynthesis.speak(utterance);
+    } else {
+      setTimeout(() => {
+        setAiState('userSpeaking');
+        if (intent && intent !== 'none' && intent !== 'error') {
+          startOperation(intent);
+        }
+      }, 2000);
+    }
+  };
 
   const handlePause = () => {
-    if (isPlaying) {
-      stop();
+    if (aiState === 'aiSpeaking') {
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      setAiState('userSpeaking');
     }
-    // 暂停后恢复到聆听状态
-    setAiState('userSpeaking');
+  };
+
+  const handleMockInput = () => {
+    const text = prompt('请输入模拟语音文本：');
+    if (text) {
+      handleUserInput(text);
+    }
   };
 
   return (
@@ -211,8 +304,15 @@ export default function AI() {
       </div>
 
       {/* 底部按钮区 (仅保留退出/关闭) */}
-      <div className="relative w-full h-20 mt-4 px-6 flex items-center justify-center">
-        {/* 居中关闭按钮 (纯白X，红色背景) */}
+      <div className="relative w-full h-20 mt-4 px-6 flex items-center justify-center gap-4">
+        {/* 模拟输入按钮，用于不支持语音或不想说话时测试 */}
+        <button
+          onClick={handleMockInput}
+          className="w-12 h-12 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+          title="模拟语音输入"
+        >
+          <MessageSquare className="w-5 h-5 text-white" />
+        </button>
       </div>
 
     </div>

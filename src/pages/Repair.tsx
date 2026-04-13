@@ -182,10 +182,23 @@ export default function Repair() {
               <button
                 type="button"
                 onClick={handleVoiceInput}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 h-6"
               >
                 <Mic size={16} />
-                {isListening ? '识别中…' : '语音输入'}
+                <span>{isListening ? '识别中…' : '语音输入'}</span>
+                {isListening && (
+                  <div className="flex items-center gap-0.5 h-4 ml-1">
+                    {[1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className="w-[2px] bg-blue-600 rounded-full animate-voice-pulse"
+                        style={{
+                          animationDelay: `${i * 0.15}s`
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
               </button>
             </div>
             {voiceHint ? <div className="mb-2 text-xs text-red-500">{voiceHint}</div> : null}

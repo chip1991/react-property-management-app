@@ -74,14 +74,17 @@ export default function AI() {
   const handleUserInput = async (text: string) => {
     setAiState('aiThinking');
     try {
-      const response = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
+      const apiUrl = import.meta.env.VITE_QWEN_API_URL || 'https://integrate.api.nvidia.com/v1/chat/completions';
+      const modelId = import.meta.env.VITE_QWEN_MODEL_ID || 'qwen/qwen3.5-397b-a17b';
+
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_QWEN_API_KEY}`
         },
         body: JSON.stringify({
-          model: 'qwen-plus',
+          model: modelId,
           messages: [
             {
               role: 'system',

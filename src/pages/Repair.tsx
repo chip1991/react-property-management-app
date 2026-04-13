@@ -1,13 +1,52 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, Camera, Wrench, CheckCircle, Mic } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+
+type SpeechRecognitionAlternativeLike = { transcript: string };
+type SpeechRecognitionResultLike = ArrayLike<SpeechRecognitionAlternativeLike>;
+type SpeechRecognitionResultsLike = ArrayLike<SpeechRecognitionResultLike>;
+type SpeechRecognitionEventLike = { results?: SpeechRecognitionResultsLike };
+type SpeechRecognitionErrorEventLike = { error?: string };
+
+type SpeechRecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionCtorLike = new () => SpeechRecognitionLike;
 
 export default function Repair() {
   const navigate = useNavigate();
   const [submitted, setSubmitted] = useState(false);
   const [description, setDescription] = useState('');
   const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  const [voiceHint, setVoiceHint] = useState<string | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const listeningRef = useRef(false);
+
+  const setListening = useCallback((value: boolean) => {
+    listeningRef.current = value;
+    setIsListening(value);
+  }, []);
+
+  const appendDescription = useCallback((text: string) => {
+    setDescription((prev) => (prev ? `${prev}\n${text}` : text));
+  }, []);
+
+  const promptFallback = useCallback(
+    (promptText: string, hint?: string) => {
+      if (hint) setVoiceHint(hint);
+      const text = prompt(promptText);
+      if (text) appendDescription(text);
+    },
+    [appendDescription]
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,27 +57,37 @@ export default function Repair() {
   };
 
   useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    const w = window as unknown as {
+      SpeechRecognition?: SpeechRecognitionCtorLike;
+      webkitSpeechRecognition?: SpeechRecognitionCtorLike;
+    };
+    const SpeechRecognition = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+    if (!SpeechRecognition || !window.isSecureContext) return;
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'zh-CN';
     recognition.continuous = false;
     recognition.interimResults = false;
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionEventLike) => {
       const text = event.results?.[0]?.[0]?.transcript;
       if (text) {
-        setDescription((prev) => (prev ? `${prev}\n${text}` : text));
+        setVoiceHint(null);
+        appendDescription(text);
       }
     };
 
-    recognition.onerror = () => {
-      setIsListening(false);
+    recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
+      setListening(false);
+      const error = event?.error;
+      const hint = error
+        ? `语音识别失败（${error}），已切换为文本输入。`
+        : '语音识别失败，已切换为文本输入。';
+      promptFallback('语音识别失败，请输入问题描述：', hint);
     };
 
     recognition.onend = () => {
-      setIsListening(false);
+      setListening(false);
     };
 
     recognitionRef.current = recognition;
@@ -46,23 +95,42 @@ export default function Repair() {
     return () => {
       recognition.stop();
       recognitionRef.current = null;
+      setListening(false);
     };
-  }, []);
+  }, [appendDescription, promptFallback, setListening]);
 
   const handleVoiceInput = () => {
-    if (recognitionRef.current) {
+    setVoiceHint(null);
+
+    if (!window.isSecureContext) {
+      promptFallback('当前页面不在安全环境（HTTPS）下，无法使用语音识别，请输入问题描述：');
+      return;
+    }
+
+    if (!recognitionRef.current) {
+      promptFallback('当前浏览器不支持语音识别，请输入问题描述：');
+      return;
+    }
+
+    if (listeningRef.current) {
       try {
-        setIsListening(true);
-        recognitionRef.current.start();
-      } catch {
-        setIsListening(false);
+        recognitionRef.current.stop();
+      } finally {
+        setListening(false);
       }
       return;
     }
 
-    const text = prompt('当前浏览器不支持语音识别，请输入问题描述：');
-    if (text) {
-      setDescription((prev) => (prev ? `${prev}\n${text}` : text));
+    try {
+      setListening(true);
+      recognitionRef.current.start();
+    } catch (e: unknown) {
+      setListening(false);
+      const message =
+        e instanceof Error && e.message.trim()
+          ? `语音识别启动失败（${e.message}），已切换为文本输入。`
+          : '语音识别启动失败，已切换为文本输入。';
+      promptFallback('语音识别启动失败，请输入问题描述：', message);
     }
   };
 
@@ -120,6 +188,7 @@ export default function Repair() {
                 {isListening ? '识别中…' : '语音输入'}
               </button>
             </div>
+            {voiceHint ? <div className="mb-2 text-xs text-red-500">{voiceHint}</div> : null}
             <textarea
               className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors min-h-[120px]"
               placeholder="请详细描述您遇到的问题，以便维修人员更好了解情况..."

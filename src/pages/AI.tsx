@@ -1,40 +1,130 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Pause, Square, MessageSquare } from 'lucide-react';
 import { useAiStore } from '../store/aiStore';
 
-declare global {
-  interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
-  }
-}
+type SpeechRecognitionAlternativeLike = { transcript: string };
+type SpeechRecognitionResultLike = ArrayLike<SpeechRecognitionAlternativeLike>;
+type SpeechRecognitionResultsLike = ArrayLike<SpeechRecognitionResultLike>;
+type SpeechRecognitionEventLike = { results?: SpeechRecognitionResultsLike };
+type SpeechRecognitionErrorEventLike = { error?: string };
+
+type SpeechRecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionCtorLike = new () => SpeechRecognitionLike;
 
 export default function AI() {
   const { startOperation } = useAiStore();
   const [aiState, setAiState] = useState<'userSpeaking' | 'aiThinking' | 'aiSpeaking'>('userSpeaking');
   const [userTranscript, setUserTranscript] = useState('');
   
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
 
+  const speakReply = useCallback(
+    (text: string, intent: string) => {
+      setAiState('aiSpeaking');
+
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-CN';
+        utterance.onend = () => {
+          setAiState('userSpeaking');
+          if (intent && intent !== 'none' && intent !== 'error') {
+            startOperation(intent);
+          }
+        };
+        synthesisRef.current = utterance;
+        window.speechSynthesis.speak(utterance);
+      } else {
+        setTimeout(() => {
+          setAiState('userSpeaking');
+          if (intent && intent !== 'none' && intent !== 'error') {
+            startOperation(intent);
+          }
+        }, 2000);
+      }
+    },
+    [startOperation]
+  );
+
+  const handleUserInput = useCallback(
+    async (text: string) => {
+      setUserTranscript(text);
+      setAiState('aiThinking');
+      try {
+        const apiUrl = import.meta.env.VITE_QWEN_API_URL || 'https://integrate.api.nvidia.com/v1/chat/completions';
+        const modelId = import.meta.env.VITE_QWEN_MODEL_ID || 'qwen/qwen3.5-397b-a17b';
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_QWEN_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: modelId,
+            messages: [
+              {
+                role: 'system',
+                content:
+                  '你是一个智能助手。请根据用户的输入，返回JSON格式。包含"reply"(确认回复的话)和"intent"(动作标识，如"repair", "navigate"等，如果没有特殊动作则为"none")。仅返回JSON，直接返回纯JSON字符串。'
+              },
+              {
+                role: 'user',
+                content: text
+              }
+            ],
+            response_format: { type: 'json_object' }
+          })
+        });
+
+        const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+        const content = data.choices?.[0]?.message?.content;
+        if (!content) throw new Error('Empty response');
+        const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim();
+        const parsed = JSON.parse(jsonStr) as { reply?: string; intent?: string };
+
+        speakReply(parsed.reply || '好的。', parsed.intent || 'none');
+      } catch (error) {
+        console.error('API Error:', error);
+        speakReply('抱歉，我遇到了一些问题。', 'error');
+      }
+    },
+    [speakReply]
+  );
+
   useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const w = window as unknown as {
+      SpeechRecognition?: SpeechRecognitionCtorLike;
+      webkitSpeechRecognition?: SpeechRecognitionCtorLike;
+    };
+    const SpeechRecognition = w.SpeechRecognition ?? w.webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.lang = 'zh-CN';
       recognition.continuous = false;
       recognition.interimResults = false;
 
-      recognition.onresult = (event: any) => {
-        const text = event.results[0][0].transcript;
+      recognition.onresult = (event: SpeechRecognitionEventLike) => {
+        const text = event.results?.[0]?.[0]?.transcript;
         if (text) {
           setUserTranscript(text);
           handleUserInput(text);
         }
       };
 
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
         console.error('Speech recognition error', event.error);
       };
       
@@ -47,98 +137,37 @@ export default function AI() {
 
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch (err) {
+          void err;
+        }
       }
       if (window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
     };
-  }, []);
+  }, [handleUserInput]);
 
   useEffect(() => {
     if (aiState === 'userSpeaking') {
       if (recognitionRef.current) {
         try {
           recognitionRef.current.start();
-        } catch (e) {
-          // Already started
+        } catch (err) {
+          void err;
         }
       }
     } else {
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
-        } catch (e) {}
+        } catch (err) {
+          void err;
+        }
       }
     }
   }, [aiState]);
-
-  const handleUserInput = async (text: string) => {
-    setUserTranscript(text);
-    setAiState('aiThinking');
-    try {
-      const apiUrl = import.meta.env.VITE_QWEN_API_URL || 'https://integrate.api.nvidia.com/v1/chat/completions';
-      const modelId = import.meta.env.VITE_QWEN_MODEL_ID || 'qwen/qwen3.5-397b-a17b';
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_QWEN_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: modelId,
-          messages: [
-            {
-              role: 'system',
-              content: '你是一个智能助手。请根据用户的输入，返回JSON格式。包含"reply"(确认回复的话)和"intent"(动作标识，如"repair", "navigate"等，如果没有特殊动作则为"none")。仅返回JSON，直接返回纯JSON字符串。'
-            },
-            {
-              role: 'user',
-              content: text
-            }
-          ],
-          response_format: { type: 'json_object' }
-        })
-      });
-
-      const data = await response.json();
-      const content = data.choices[0].message.content;
-      // Handle potential markdown formatting from some models
-      const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim();
-      const parsed = JSON.parse(jsonStr);
-      
-      speakReply(parsed.reply, parsed.intent);
-    } catch (error) {
-      console.error('API Error:', error);
-      speakReply('抱歉，我遇到了一些问题。', 'error');
-    }
-  };
-
-  const speakReply = (text: string, intent: string) => {
-    setAiState('aiSpeaking');
-    
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'zh-CN';
-      utterance.onend = () => {
-        setAiState('userSpeaking');
-        if (intent && intent !== 'none' && intent !== 'error') {
-          startOperation(intent);
-        }
-      };
-      synthesisRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
-    } else {
-      setTimeout(() => {
-        setAiState('userSpeaking');
-        if (intent && intent !== 'none' && intent !== 'error') {
-          startOperation(intent);
-        }
-      }, 2000);
-    }
-  };
 
   const handlePause = () => {
     if (aiState === 'aiSpeaking') {

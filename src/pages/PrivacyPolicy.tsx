@@ -1,12 +1,24 @@
 import React from 'react';
+import { ChevronLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const PrivacyPolicy: React.FC = () => {
+  const navigate = useNavigate();
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-3xl mx-auto bg-white p-8 rounded-lg shadow">
-        <h1 className="text-2xl font-bold mb-6 text-gray-900">隐私与安全协议</h1>
-        
-        <div className="space-y-4 text-gray-700">
+    <div className="min-h-screen bg-gray-50 flex flex-col w-full max-w-[375px] mx-auto shadow-[0_0_20px_rgba(0,0,0,0.5)]">
+      {/* 头部 */}
+      <div className="bg-white flex items-center justify-between px-4 h-14 border-b border-gray-100 shrink-0 sticky top-0 z-10">
+        <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-gray-600">
+          <ChevronLeft size={24} />
+        </button>
+        <h1 className="text-lg font-medium text-gray-800">隐私与安全协议</h1>
+        <div className="w-10"></div>
+      </div>
+
+      {/* 内容区 */}
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="bg-white p-6 rounded-xl shadow-sm space-y-4 text-gray-700">
           <section>
             <h2 className="text-xl font-semibold mb-2">1. 信息收集</h2>
             <p>我们可能会收集您的基本信息，包括但不限于姓名、联系方式、设备信息等，以便为您提供更好的服务体验。</p>

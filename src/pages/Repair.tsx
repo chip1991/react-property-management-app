@@ -3,9 +3,9 @@ import { ChevronLeft, Camera, Wrench, CheckCircle, Mic } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 type SpeechRecognitionAlternativeLike = { transcript: string };
-type SpeechRecognitionResultLike = ArrayLike<SpeechRecognitionAlternativeLike>;
+type SpeechRecognitionResultLike = ArrayLike<SpeechRecognitionAlternativeLike> & { isFinal?: boolean };
 type SpeechRecognitionResultsLike = ArrayLike<SpeechRecognitionResultLike>;
-type SpeechRecognitionEventLike = { results?: SpeechRecognitionResultsLike };
+type SpeechRecognitionEventLike = { results?: SpeechRecognitionResultsLike; resultIndex?: number };
 type SpeechRecognitionErrorEventLike = { error?: string };
 
 type SpeechRecognitionLike = {
@@ -29,6 +29,10 @@ export default function Repair() {
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const listeningRef = useRef(false);
+  const silenceTimerRef = useRef<number | null>(null);
+  const lastResultAtRef = useRef<number | null>(null);
+  const sessionTranscriptRef = useRef('');
+  const stoppingForSilenceRef = useRef(false);
 
   const setListening = useCallback((value: boolean) => {
     listeningRef.current = value;
@@ -56,6 +60,33 @@ export default function Repair() {
     }, 2000);
   };
 
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current != null) {
+      window.clearInterval(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  }, []);
+
+  const startSilenceTimer = useCallback(() => {
+    clearSilenceTimer();
+    silenceTimerRef.current = window.setInterval(() => {
+      if (!listeningRef.current) return;
+      if (!lastResultAtRef.current) return;
+      const silenceMs = Date.now() - lastResultAtRef.current;
+      if (silenceMs < 1200) return;
+      const text = sessionTranscriptRef.current.trim();
+      if (!text) return;
+      if (!recognitionRef.current) return;
+
+      stoppingForSilenceRef.current = true;
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        setListening(false);
+      }
+    }, 200);
+  }, [clearSilenceTimer, setListening]);
+
   useEffect(() => {
     const w = window as unknown as {
       SpeechRecognition?: SpeechRecognitionCtorLike;
@@ -66,19 +97,31 @@ export default function Repair() {
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'zh-CN';
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.interimResults = true;
 
     recognition.onresult = (event: SpeechRecognitionEventLike) => {
-      const text = event.results?.[0]?.[0]?.transcript;
-      if (text) {
-        setVoiceHint(null);
-        appendDescription(text);
+      const results = event.results;
+      if (!results || results.length === 0) return;
+
+      lastResultAtRef.current = Date.now();
+      setVoiceHint(null);
+      startSilenceTimer();
+
+      let combined = '';
+      for (let i = 0; i < results.length; i += 1) {
+        const transcript = results[i]?.[0]?.transcript;
+        if (transcript) combined += transcript;
       }
+      sessionTranscriptRef.current = combined.trim();
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
+      clearSilenceTimer();
       setListening(false);
+      lastResultAtRef.current = null;
+      sessionTranscriptRef.current = '';
+      stoppingForSilenceRef.current = false;
       const error = event?.error;
       const hint = error
         ? `语音识别失败（${error}），已切换为文本输入。`
@@ -87,17 +130,41 @@ export default function Repair() {
     };
 
     recognition.onend = () => {
+      clearSilenceTimer();
+
+      const text = sessionTranscriptRef.current.trim();
+      const shouldCommit = text && (stoppingForSilenceRef.current || !listeningRef.current);
+      if (shouldCommit) {
+        appendDescription(text);
+      }
+
+      lastResultAtRef.current = null;
+      sessionTranscriptRef.current = '';
+      const shouldRestart = listeningRef.current && !stoppingForSilenceRef.current;
+      stoppingForSilenceRef.current = false;
+
+      if (shouldRestart) {
+        try {
+          recognition.start();
+          startSilenceTimer();
+          return;
+        } catch {}
+      }
       setListening(false);
     };
 
     recognitionRef.current = recognition;
 
     return () => {
+      clearSilenceTimer();
       recognition.stop();
       recognitionRef.current = null;
       setListening(false);
+      lastResultAtRef.current = null;
+      sessionTranscriptRef.current = '';
+      stoppingForSilenceRef.current = false;
     };
-  }, [appendDescription, promptFallback, setListening]);
+  }, [appendDescription, clearSilenceTimer, promptFallback, setListening, startSilenceTimer]);
 
   const handleVoiceInput = () => {
     setVoiceHint(null);
@@ -113,6 +180,12 @@ export default function Repair() {
     }
 
     if (listeningRef.current) {
+      clearSilenceTimer();
+      const text = sessionTranscriptRef.current.trim();
+      if (text) appendDescription(text);
+      lastResultAtRef.current = null;
+      sessionTranscriptRef.current = '';
+      stoppingForSilenceRef.current = false;
       try {
         recognitionRef.current.stop();
       } finally {
@@ -122,9 +195,14 @@ export default function Repair() {
     }
 
     try {
+      sessionTranscriptRef.current = '';
+      lastResultAtRef.current = Date.now();
+      stoppingForSilenceRef.current = false;
       setListening(true);
       recognitionRef.current.start();
+      startSilenceTimer();
     } catch (e: unknown) {
+      clearSilenceTimer();
       setListening(false);
       const message =
         e instanceof Error && e.message.trim()

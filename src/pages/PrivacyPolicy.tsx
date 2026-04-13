@@ -39,6 +39,16 @@ const PrivacyPolicy: React.FC = () => {
             <p>您有权随时查看、修改或要求删除我们收集的关于您的个人信息。如有需要，请联系我们的客服团队。</p>
           </section>
         </div>
+
+        {/* 底部返回首页链接 */}
+        <div className="mt-8 text-center">
+          <button 
+            onClick={() => navigate('/')} 
+            className="text-sm text-gray-400 hover:text-blue-500 transition-colors"
+          >
+            返回首页
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -267,6 +267,17 @@ export default function AI() {
     }
   }, [aiState]);
 
+  const hasWelcomedRef = useRef(false);
+  useEffect(() => {
+    if (!hasWelcomedRef.current) {
+      hasWelcomedRef.current = true;
+      // 稍微延迟播放，以确保页面加载和动画过渡更加平滑
+      setTimeout(() => {
+        speakReply('你好，我是您的专属管家，请问有什么可以帮您？', 'none');
+      }, 300);
+    }
+  }, [speakReply]);
+
   const handlePause = () => {
     if (aiState === 'aiSpeaking') {
       if (window.speechSynthesis) {

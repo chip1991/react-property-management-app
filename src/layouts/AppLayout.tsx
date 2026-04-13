@@ -1,21 +1,17 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Home, Mic, User, X } from 'lucide-react';
-import { useAudioStore } from '../store/audioStore';
 
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { play, stop } = useAudioStore();
 
   const handleAIMicClick = () => {
-    // 如果当前在 AI 页面，点击红色 X 则退出到首页并停止音频
+    // 如果当前在 AI 页面，点击红色 X 则退出到首页
     if (location.pathname === '/ai') {
-      stop();
       navigate('/');
     } else {
-      // 否则进入 AI 页面，并触发播放
+      // 否则进入 AI 页面
       navigate('/ai');
-      play();
     }
   };
 

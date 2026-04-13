@@ -31,8 +31,22 @@ export default function Repair() {
   const listeningRef = useRef(false);
   const silenceTimerRef = useRef<number | null>(null);
   const lastResultAtRef = useRef<number | null>(null);
-  const sessionTranscriptRef = useRef('');
+  const finalTranscriptRef = useRef('');
+  const interimTranscriptRef = useRef('');
+  const lastFinalIndexRef = useRef(0);
   const stoppingForSilenceRef = useRef(false);
+
+  const getSessionTranscript = useCallback(() => {
+    return `${finalTranscriptRef.current}${interimTranscriptRef.current}`.trim();
+  }, []);
+
+  const resetSessionTranscript = useCallback(() => {
+    finalTranscriptRef.current = '';
+    interimTranscriptRef.current = '';
+    lastFinalIndexRef.current = 0;
+    lastResultAtRef.current = null;
+    stoppingForSilenceRef.current = false;
+  }, []);
 
   const setListening = useCallback((value: boolean) => {
     listeningRef.current = value;
@@ -42,6 +56,14 @@ export default function Repair() {
   const appendDescription = useCallback((text: string) => {
     setDescription((prev) => (prev ? `${prev}\n${text}` : text));
   }, []);
+
+  const commitSessionTranscript = useCallback(() => {
+    const text = getSessionTranscript();
+    if (text) {
+      appendDescription(text);
+    }
+    resetSessionTranscript();
+  }, [appendDescription, getSessionTranscript, resetSessionTranscript]);
 
   const promptFallback = useCallback(
     (promptText: string, hint?: string) => {
@@ -73,8 +95,8 @@ export default function Repair() {
       if (!listeningRef.current) return;
       if (!lastResultAtRef.current) return;
       const silenceMs = Date.now() - lastResultAtRef.current;
-      if (silenceMs < 1200) return;
-      const text = sessionTranscriptRef.current.trim();
+      if (silenceMs < 3000) return;
+      const text = getSessionTranscript();
       if (!text) return;
       if (!recognitionRef.current) return;
 
@@ -85,7 +107,7 @@ export default function Repair() {
         setListening(false);
       }
     }, 200);
-  }, [clearSilenceTimer, setListening]);
+  }, [clearSilenceTimer, setListening, getSessionTranscript]);
 
   useEffect(() => {
     const w = window as unknown as {
@@ -108,49 +130,52 @@ export default function Repair() {
       setVoiceHint(null);
       startSilenceTimer();
 
-      let combined = '';
-      for (let i = 0; i < results.length; i += 1) {
-        const transcript = results[i]?.[0]?.transcript;
-        if (transcript) combined += transcript;
+      let currentInterim = '';
+      for (let i = event.resultIndex ?? 0; i < results.length; i += 1) {
+        const result = results[i];
+        if (!result) continue;
+        const transcript = result[0]?.transcript || '';
+
+        if (result.isFinal) {
+          if (i >= lastFinalIndexRef.current) {
+            finalTranscriptRef.current += transcript;
+            lastFinalIndexRef.current = i + 1;
+          }
+        } else {
+          currentInterim += transcript;
+        }
       }
-      sessionTranscriptRef.current = combined.trim();
+      interimTranscriptRef.current = currentInterim;
+      
+      // 触发一次 state 更新以渲染 interim
+      setDescription((prev) => prev);
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
       clearSilenceTimer();
       setListening(false);
-      lastResultAtRef.current = null;
-      sessionTranscriptRef.current = '';
-      stoppingForSilenceRef.current = false;
-      const error = event?.error;
-      const hint = error
-        ? `语音识别失败（${error}），已切换为文本输入。`
-        : '语音识别失败，已切换为文本输入。';
-      promptFallback('语音识别失败，请输入问题描述：', hint);
+      resetSessionTranscript();
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        promptFallback('麦克风权限被拒绝，请手动输入问题描述：', '权限被拒绝，请手动输入');
+      } else {
+        promptFallback('语音识别出错了，请手动输入：', '识别出错，请重试或手动输入');
+      }
     };
 
     recognition.onend = () => {
       clearSilenceTimer();
-
-      const text = sessionTranscriptRef.current.trim();
-      const shouldCommit = text && (stoppingForSilenceRef.current || !listeningRef.current);
-      if (shouldCommit) {
-        appendDescription(text);
-      }
-
-      lastResultAtRef.current = null;
-      sessionTranscriptRef.current = '';
+      commitSessionTranscript();
+      
       const shouldRestart = listeningRef.current && !stoppingForSilenceRef.current;
-      stoppingForSilenceRef.current = false;
-
       if (shouldRestart) {
         try {
           recognition.start();
-          startSilenceTimer();
-          return;
-        } catch {}
+        } catch {
+          setListening(false);
+        }
+      } else {
+        setListening(false);
       }
-      setListening(false);
     };
 
     recognitionRef.current = recognition;
@@ -161,7 +186,9 @@ export default function Repair() {
       recognitionRef.current = null;
       setListening(false);
       lastResultAtRef.current = null;
-      sessionTranscriptRef.current = '';
+      finalTranscriptRef.current = '';
+      interimTranscriptRef.current = '';
+      lastFinalIndexRef.current = 0;
       stoppingForSilenceRef.current = false;
     };
   }, [appendDescription, clearSilenceTimer, promptFallback, setListening, startSilenceTimer]);
@@ -181,11 +208,7 @@ export default function Repair() {
 
     if (listeningRef.current) {
       clearSilenceTimer();
-      const text = sessionTranscriptRef.current.trim();
-      if (text) appendDescription(text);
-      lastResultAtRef.current = null;
-      sessionTranscriptRef.current = '';
-      stoppingForSilenceRef.current = false;
+      commitSessionTranscript();
       try {
         recognitionRef.current.stop();
       } finally {
@@ -195,9 +218,8 @@ export default function Repair() {
     }
 
     try {
-      sessionTranscriptRef.current = '';
+      resetSessionTranscript();
       lastResultAtRef.current = Date.now();
-      stoppingForSilenceRef.current = false;
       setListening(true);
       recognitionRef.current.start();
       startSilenceTimer();
@@ -260,19 +282,17 @@ export default function Repair() {
               <button
                 type="button"
                 onClick={handleVoiceInput}
-                className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 h-6"
+                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
               >
                 <Mic size={16} />
-                <span>{isListening ? '识别中…' : '语音输入'}</span>
+                {isListening ? '识别中…' : '语音输入'}
                 {isListening && (
                   <div className="flex items-center gap-0.5 h-4 ml-1">
                     {[1, 2, 3].map((i) => (
                       <div
                         key={i}
                         className="w-[2px] bg-blue-600 rounded-full animate-voice-pulse"
-                        style={{
-                          animationDelay: `${i * 0.15}s`
-                        }}
+                        style={{ animationDelay: `${i * 0.15}s` }}
                       />
                     ))}
                   </div>
@@ -281,12 +301,15 @@ export default function Repair() {
             </div>
             {voiceHint ? <div className="mb-2 text-xs text-red-500">{voiceHint}</div> : null}
             <textarea
-              className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors min-h-[120px]"
+              className={`w-full border border-gray-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors min-h-[120px] ${
+                isListening ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : 'bg-gray-50 focus:bg-white'
+              }`}
               placeholder="请详细描述您遇到的问题，以便维修人员更好了解情况..."
-              value={description}
+              value={isListening ? `${description}\n${getSessionTranscript()}`.trim() : description}
               onChange={(e) => setDescription(e.target.value)}
               required
-            ></textarea>
+              readOnly={isListening}
+            />
           </div>
 
           <div className="bg-white rounded-xl p-4 shadow-sm">

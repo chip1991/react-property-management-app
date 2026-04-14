@@ -26,6 +26,7 @@ export default function AI() {
   const { startOperation } = useAiStore();
   const [aiState, setAiState] = useState<'userSpeaking' | 'aiThinking' | 'aiSpeaking'>('userSpeaking');
   const [userTranscript, setUserTranscript] = useState('');
+  const [aiResponse, setAiResponse] = useState('');
   
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -61,6 +62,7 @@ export default function AI() {
   const handleUserInput = useCallback(
     async (text: string) => {
       setUserTranscript(text);
+      setAiResponse('');
       setAiState('aiThinking');
       try {
         const apiUrl = import.meta.env.VITE_QWEN_API_URL || 'https://integrate.api.nvidia.com/v1/chat/completions';
@@ -91,14 +93,18 @@ export default function AI() {
 
         const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
         const content = data.choices?.[0]?.message?.content;
-        if (!content) throw new Error('Empty response');
+        if (!content) throw new Error('Empty response or invalid API key');
         const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim();
         const parsed = JSON.parse(jsonStr) as { reply?: string; intent?: string };
 
-        speakReply(parsed.reply || '好的。', parsed.intent || 'none');
+        const replyText = parsed.reply || '好的。';
+        setAiResponse(replyText);
+        speakReply(replyText, parsed.intent || 'none');
       } catch (error) {
         console.error('API Error:', error);
-        speakReply('抱歉，我遇到了一些问题。', 'error');
+        const errorMsg = '抱歉，我遇到了一些问题。';
+        setAiResponse(errorMsg + ' (' + (error instanceof Error ? error.message : String(error)) + ')');
+        speakReply(errorMsg, 'error');
       }
     },
     [speakReply]
@@ -342,10 +348,15 @@ export default function AI() {
       {/* 底部按钮区 (仅保留退出/关闭) */}
       <div className="relative w-full mt-4 px-6 flex flex-col items-center justify-center gap-3">
         {userTranscript && (
-          <div className="w-full max-w-[320px]">
+          <div className="w-full max-w-[320px] flex flex-col gap-2">
             <div className="w-full rounded-xl bg-white/10 px-4 py-2 text-center">
               <p className="text-xs text-gray-300 truncate">你说：{userTranscript}</p>
             </div>
+            {aiResponse && (
+              <div className="w-full rounded-xl bg-blue-500/20 border border-blue-500/30 px-4 py-2 text-center">
+                <p className="text-xs text-blue-100 line-clamp-3">AI：{aiResponse}</p>
+              </div>
+            )}
           </div>
         )}
         {/* 模拟输入按钮，用于不支持语音或不想说话时测试 */}

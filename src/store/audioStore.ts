@@ -10,8 +10,8 @@ interface AudioState {
   stop: () => void;
 }
 
-// 示例音频地址，你可以替换为真实的音频地址
-const AUDIO_URL = 'https://www.w3schools.com/html/horse.mp3';
+// 欢迎语音频地址，你可以把你的欢迎语音频文件（比如 welcome.mp3）放到 public 目录下，然后修改下面的名字
+const AUDIO_URL = '/welcome.mp3';
 
 export const useAudioStore = create<AudioState>((set, get) => ({
   audio: null,
@@ -21,7 +21,7 @@ export const useAudioStore = create<AudioState>((set, get) => ({
     if (get().audio) return;
     
     const audio = new Audio(AUDIO_URL);
-    audio.loop = true; // 根据需求决定是否循环
+    audio.loop = false; // 取消循环播放，只播放一次
     
     // 监听原生音频事件，同步状态
     audio.addEventListener('play', () => set({ isPlaying: true }));
